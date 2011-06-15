@@ -49,6 +49,7 @@ a.test { font-weight: bold; }
 
  <div id="userspanel">
     <span id="status" class="ok">ready</span>
+
      <table id="users" ></table>
 
      <div id="newuser">
@@ -59,11 +60,7 @@ a.test { font-weight: bold; }
 </div>
 
  <div id="registration">
-
-     <table id="tab" border="1px">
-         <tr><td>test</td></tr>
-     </table>
-
+     <table id="events" ></table>
  </div>
 
     <!--<script src="jquery-1.6.1.js"></script>-->
@@ -78,14 +75,15 @@ a.test { font-weight: bold; }
          var username = document.querySelector("#form_username").value;
          var uid = document.querySelector("#form_uid").value;
 
-         klmdb.create(username, uid);
+         klmdb.dbcreate("users", {"name" : username , "uid" : uid } );
        }
 
 
        function deleteUser(id) {
        alert(id);
-        klmdb.deleteUser(id);
+        klmdb.dbdelete("users", id);
        }
+
    </script>
 
 

@@ -1,7 +1,7 @@
 
-var klmdb = (function (user, elm, status) {
+var klmdb = (function () {
   var elm = document.querySelector(elm),
-      status = document.querySelector(status),
+      status = document.querySelector("#status"),
       db = null,
       showingTimeline = true,
       latest = 0;
@@ -14,8 +14,10 @@ var klmdb = (function (user, elm, status) {
         if (db) {
           db.transaction(function(tx) {
 
+            tx.executeSql("CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT, created_at TEXT, event_type TEXT )", [], function (tx, result) {
+            });
+
             tx.executeSql("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, created_at TEXT, uid TEXT )", [], function (tx, result) {
-              clear();
               klmdb.timeline();
             });
           });
@@ -30,31 +32,21 @@ var klmdb = (function (user, elm, status) {
     }
   }
 
-  function load() {
+  function load(table, myelm) {
     db.transaction(function (tx) {
-      tx.executeSql('SELECT * FROM users ORDER BY id DESC', [], function (tx, results) {
+      tx.executeSql('SELECT * FROM ' + table + ' ORDER BY id DESC', [], function (tx, results) {
 
-        var tweets = [], i, since_id = 0, script;
+        var list = [], i, since_id = 0, script;
 
         if (results.rows && results.rows.length) {
-          status.innerHTML = 'loading ' + (showingTimeline ? 'timeline' : 'mentions') + ' from DB';
+          status.innerHTML = 'loading from DB';
           for (i = 0; i < results.rows.length; i++) {
-//            if (since_id == 0) {
-//              since_id = results.rows.item(i).id;
-//            }
-            tweets.push(results.rows.item(i));
+            list.push(results.rows.item(i));
           }
 
-          show(tweets);
-        } else if (latest) {
-          since_id = latest;
+          show(list, table, myelm);
         }
 
-
-//        script = document.createElement('script');
-//        script.src = url;
-//        script.id = "twitterJSON";
-//        document.body.appendChild(script);
       }, function (tx) {
         status.innerHTML = 'error occurred, please reset DB';
       });
@@ -62,51 +54,53 @@ var klmdb = (function (user, elm, status) {
 
   }
 
-  function show(tweets) {
+  function show(tweets, table, myelm) {
+  console.log("displaying " + tweets.length + " " + table + ":" );
     if (tweets.length) {
       status.innerHTML = 'showing ' + tweets.length + ' users';
       tweets = tweets.reverse();
       var html = '', li;
 
         // reset list
-        while ( elm.childNodes.length >= 1 )
+        while ( myelm.childNodes.length >= 1 )
         {
-            elm.removeChild( elm.firstChild );
+            myelm.removeChild( elm.firstChild );
         }
 
         var tr = document.createElement('tr');
-        var td;
 
-        td = document.createElement('td');
-        td.innerHTML = 'user';
-        tr.appendChild(td)
+        for(var key in tweets[0]) {
+            console.log("key " + key);
+            var td = document.createElement('td');
+            td.innerHTML = key;
+            tr.appendChild(td);
+        }
 
-        td = document.createElement('td');
-        td.innerHTML = 'uid';
-        tr.appendChild(td)
 
-        td = document.createElement('td');
-        td.innerHTML = '';
-        tr.appendChild(td)
         tr.className = "users_tr_head";
-
-        elm.appendChild(tr);
+        myelm.appendChild(tr);
 
       for (var i = 0; i < tweets.length; i++) {
         var tr = document.createElement('tr');
 
+
+        for(var key in tweets[i]) {
+            var td = document.createElement('td');
+            td.innerHTML = tweets[i][key];
+            tr.appendChild(td);
+        }
+
+// add delete link
+        {
+            var td = document.createElement('td');
+            td.innerHTML = '<a href=\"javascript:klmdb.dbdelete(\'' + table + '\', ' + tweets[i].id + ')">x</a>';
+            tr.appendChild(td);
+        }
+
 //        li.innerHTML = ify.clean(tweets[i].text) + ' (<a href="http://twitter.com/' + tweets[i].screen_name + '/status/' + tweets[i].id + '">' + tweets[i].created_at + '</a>)';
-        var td1 = document.createElement('td');
-        var td2 = document.createElement('td');
-        var td3 = document.createElement('td');
 
-        td1.innerHTML = tweets[i].name;
-        td2.innerHTML = tweets[i].uid;
-        td3.innerHTML = "<a href=\"javascript:deleteUser(" + tweets[i].id + ")\">delete</a>";
+//        td3.innerHTML = "<a href=\"javascript:deleteUser(" + tweets[i].id + ")\">delete</a>";
 
-        tr.appendChild(td1);
-        tr.appendChild(td2);
-        tr.appendChild(td3);
 
         if(i % 2 == 0)
             tr.className = "users_tr_even";
@@ -114,16 +108,11 @@ var klmdb = (function (user, elm, status) {
             tr.className = "users_tr_odd";
 
 
-        elm.appendChild(tr);
+        myelm.appendChild(tr);
 
         latest = tweets[i].id;
       }
     }
-  }
-
-  function clear() {
-    latest = 0;
-//    elm.innerHTML = '';
   }
 
   return {
@@ -135,14 +124,9 @@ var klmdb = (function (user, elm, status) {
 
     timeline: function () {
       status.innerHTML = 'loading timeline';
-      if (!showingTimeline) {
-        clear();
-      }
 
-      showingTimeline = true;
-
-      var url = 'http://twitter.com/statuses/user_timeline/' + encodeURIComponent(user) + '.json?callback=html5demoTweets.loadTweets';
-      load(false, url);
+      load("users", document.querySelector("#users"));
+      load("events", document.querySelector("#events"));
     },
 
 
@@ -157,88 +141,72 @@ var klmdb = (function (user, elm, status) {
       });
     },
 
-    // public so the JSONP callback can hit it
-    loadTweets: function (tweets) {
-      var search = false;
-
-      document.body.removeChild(document.getElementById('twitterJSON'));
-
-      if (typeof tweets == 'string') {
-        // error occurred
-        return;
-      }
-
-      if (tweets.results) {
-        tweets = tweets.results;
-        search = true;
-      }
-
-      if (tweets.length) {
-        status.innerHTML = tweets.length + ' new tweets loaded';
-
+    dbcreate: function (table, object) {
         db.transaction(function (tx) {
-          var i;
-          for (i = 0; i < tweets.length; i++) {
-            if (search) {
-              tweets[i].screen_name = tweets[i].from_user;
-            } else {
-              tweets[i].screen_name = tweets[i].user.screen_name;
+
+            var keys = "";
+            var paramarks = "";
+            var params = [];
+
+            var first = true;
+
+            for(key in object) {
+                if(!first) {
+                    keys += ", ";
+                    paramarks  += ", ";
+                }
+                keys += key;
+                paramarks += "?";
+                first = false;
+
+                params.push(object[key]);
             }
-            tx.executeSql('INSERT INTO tweets (id, text, created_at, screen_name, mention) values (?, ?, ?, ?, ?)', [tweets[i].id, tweets[i].text, tweets[i].created_at, tweets[i].screen_name, search]);
-          }
-
-          show(tweets);
-        });
-      }
-    },
-
-    create: function (name, uid) {
-        db.transaction(function (tx) {
-            tx.executeSql('INSERT INTO users (name, uid) values (?, ?)', [name, uid]);
+            console.log("keys : " + keys);
+            tx.executeSql('INSERT INTO ' + table + ' (' + keys + ')  values (' + paramarks + ')', params);
         });
     	load();
     },
 
-    deleteUser: function (id) {
+    dbdelete: function (table, id) {
         db.transaction(function (tx) {
-            tx.executeSql('DELETE FROM users WHERE id = ?', [id]);
+            tx.executeSql('DELETE FROM ' + table + ' WHERE id = ?', [id]);
         })
     	load();
     }
 
   };
 
-})('rem', '#users', '#status');
+})();
 // twitter username, element with the list of tweets, status field
-
-
-var ify = function() {
-  var entities = {
-      '"' : '&quot;',
-      '&' : '&amp;',
-      '<' : '&lt;',
-      '>' : '&gt;'
-  };
-
-  return {
-    "link": function(t) {
-//      return t.replace(/[A-Za-z]+:\/\/[A-Za-z0-9-_]+\.[A-Za-z0-9-_:%&\?\/.=]+[^\.,\)\s*$]/g, function(m) {
-        return '<a href="' + m + '">' + ((m.length > 25) ? m.substr(0, 24) + '...' : m) + '</a>';
-//      });
-    },
-    "at": function(t) {
-//      return t.replace(/(^|[^\w]+)\@([a-zA-Z0-9_]{1,15})/g, function(m, m1, m2) {
-        return m1 + '@<a href="http://twitter.com/' + m2 + '">' + m2 + '</a>';
-//      });
-    },
-    "hash": function(t) {
-//      ret urn t.replace(/(^|[^\w]+)\#([a-zA-Z0-9_]+)/g, function(m, m1, m2) {
-        return m1 + '#<a href="http://search.twitter.com/search?q=%23' + m2 + '">' + m2 + '</a>';
-//      });
-    },
-    "clean": function(tweet) {
-      return this.hash(this.at(this.link(tweet)));
-    }
-  };
-}();
-
+//
+//
+//var ify = function() {
+//  var entities = {
+//      '"' : '&quot;',
+//      '&' : '&amp;',
+//      '<' : '&lt;',
+//      '>' : '&gt;'
+//  };
+//
+//  return {
+//    "link": function(t) {
+////      return t.replace(/[A-Za-z]+:\/\/[A-Za-z0-9-_]+\.[A-Za-z0-9-_:%&\?\/.=]+[^\.,\)\s*$]/g, function(m) {
+//        return '<a href="' + m + '">' + ((m.length > 25) ? m.substr(0, 24) + '...' : m) + '</a>';
+////      });
+//    },
+//    "at": function(t) {
+////      return t.replace(/(^|[^\w]+)\@([a-zA-Z0-9_]{1,15})/g, function(m, m1, m2) {
+//        return m1 + '@<a href="http://twitter.com/' + m2 + '">' + m2 + '</a>';
+////      });
+//    },
+//    "hash": function(t) {
+////      ret urn t.replace(/(^|[^\w]+)\#([a-zA-Z0-9_]+)/g, function(m, m1, m2) {
+//        return m1 + '#<a href="http://search.twitter.com/search?q=%23' + m2 + '">' + m2 + '</a>';
+////      });
+//    },
+//    "clean": function(tweet) {
+//      return this.hash(this.at(this.link(tweet)));
+//    }
+//  };
+//}();
+//
